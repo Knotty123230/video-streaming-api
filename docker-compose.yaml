@@ -1,16 +1,38 @@
 version: '3.8'
 
 services:
+  kafka:
+    platform: linux/x86_64
+    image: confluentinc/cp-kafka:6.2.4
+    depends_on:
+      - zookeeper
+    ports:
+      - "29092:29092"
+    healthcheck:
+      test: [ "CMD", "nc", "-vz", "zookeeper", "2181" ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENERS: OUTSIDE://:29092,INTERNAL://:9092
+      KAFKA_ADVERTISED_LISTENERS: OUTSIDE://kafka:29092,INTERNAL://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,OUTSIDE:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
   elasticsearch:
     container_name: elasticsearch
     image: docker.elastic.co/elasticsearch/elasticsearch:8.7.1
-    # 8.x
-    environment: [ 'CLI_JAVA_OPTS=-Xms2g -Xmx2g','bootstrap.memory_lock=true','discovery.type=single-node','xpack.security.enabled=false', 'xpack.security.enrollment.enabled=false' ]
+    environment:
+      - 'CLI_JAVA_OPTS=-Xms2g -Xmx2g'
+      - 'bootstrap.memory_lock=true'
+      - 'discovery.type=single-node'
+      - 'xpack.security.enabled=false'
+      - 'xpack.security.enrollment.enabled=false'
     ports:
       - "9200:9200"
-    networks:
-      - elastic
     ulimits:
       memlock:
         soft: -1
@@ -22,8 +44,10 @@ services:
       resources:
         limits:
           cpus: '2.0'
+          memory: 4G
         reservations:
           cpus: '1.0'
+          memory: 2G
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.7.1
@@ -32,39 +56,6 @@ services:
       XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: d1a66dfd-c4d3-4a0a-8290-2abcb83ab3aa
     ports:
       - "5601:5601"
-    networks:
-      - elastic
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-        reservations:
-          cpus: '1.0'
-  minio:
-    platform: linux/x86_64
-    image: minio/minio:RELEASE.2023-06-29T05-12-28Z.fips
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio_storage:/data
-    environment:
-      MINIO_ROOT_USER: admin
-      MINIO_ROOT_PASSWORD: adminpass
-    command: server --console-address ":9001" /data
-  client-backend:
-    image: spring-boot-authorize:latest
-    build:
-      context: FileMetadataStorage
-    ports:
-      - "8181:8585"
-    depends_on:
-      - service-db
-    environment:
-      - SERVER_PORT=8585
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://service-db/authorization
-      - SPRING_DATASOURCE_USERNAME=username
-      - SPRING_DATASOURCE_PASSWORD=password
 
   service-db:
     platform: linux/x86_64
@@ -85,8 +76,16 @@ services:
       - ./sql/create_tables.sql:/docker-entrypoint-initdb.d/create_tables.sql
       - ./sql/create_table.sql:/docker-entrypoint-initdb.d/create_table.sql
 
+  eureka:
+    image: eureka:v1
+    ports:
+      - "8081:8081"
+    depends_on:
+      - service-db
+    environment:
+      - SERVER_PORT=8081
+
   pgadmin:
-    platform: linux/x86_64
     container_name: pgadmin4_container
     image: dpage/pgadmin4:7
     restart: always
@@ -95,6 +94,7 @@ services:
       PGADMIN_DEFAULT_PASSWORD: root
     ports:
       - "5050:80"
+
   zookeeper:
     platform: linux/x86_64
     image: confluentinc/cp-zookeeper:6.2.4
@@ -107,29 +107,7 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     ports:
-      - 22181:2181
-
-  kafka:
-    platform: linux/x86_64
-    image: confluentinc/cp-kafka:6.2.4
-    depends_on:
-      zookeeper:
-        condition: service_healthy
-    ports:
-      - "29092:29092"
-    healthcheck:
-      test: [ "CMD", "nc", "-vz", "localhost", "9092" ]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_LISTENERS: OUTSIDE://:29092,INTERNAL://:9092
-      KAFKA_ADVERTISED_LISTENERS: OUTSIDE://localhost:29092,INTERNAL://kafka:9092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,OUTSIDE:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      - "22181:2181"
 
   kafka-ui:
     platform: linux/x86_64
@@ -139,20 +117,99 @@ services:
       - "8080:8080"
     restart: always
     depends_on:
-      kafka:
-        condition: service_healthy
+      - kafka
     environment:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
 
+  minio:
+    platform: linux/x86_64
+    image: minio/minio:RELEASE.2023-06-29T05-12-28Z.fips
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_storage:/data
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: adminpass
+    command: server --console-address ":9001" /data
+
+  video-streaming-api:
+    image: video-streaming:v1
+    ports:
+      - "0:0"
+    depends_on:
+      - eureka
+      - kafka
+    environment:
+      - eureka.client.serviceUrl.defaultZone=http://eureka:8081/eureka
+      - minio.url=http://minio:9000/
+      - minio.username=admin
+      - file.metadata=http://api-gateway:9098/
+      - minio.password=adminpass
+      - minio.put-object-part-size=5242880
+      - spring.kafka.bootstrap-servers=kafka:29092
+
+  elastic-search-api:
+    image: elasticsearch:v1
+    ports:
+      - "0:0"
+    depends_on:
+      - elasticsearch
+      - eureka
+    environment:
+      - eureka.client.serviceUrl.defaultZone=http://eureka:8081/eureka
+      - spring.kafka.bootstrap-servers=kafka:29092
+      - spring.elasticsearch.uris=localhost:9200
+      - spring.elasticsearch.username=elastic
+      - spring.elasticsearch.password=changeme
+
+  file-metadata-storage:
+    image: file-metadata:v1
+    ports:
+      - "0:0"
+    depends_on:
+      - kafka
+      - eureka
+    environment:
+      - eureka.client.serviceUrl.defaultZone=http://eureka:8081/eureka
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://service-db/postgres
+      - SPRING_DATASOURCE_USERNAME=username
+      - SPRING_DATASOURCE_PASSWORD=password
+      - spring.kafka.bootstrap-servers=kafka:29092
+
+  authorization-server:
+    image: spring-boot-authorize:latest
+    build:
+      context: FileMetadataStorage
+    ports:
+      - "8181:8585"
+    depends_on:
+      - service-db
+      - eureka
+    environment:
+      - SERVER_PORT=8585
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://service-db/authorization
+      - SPRING_DATASOURCE_USERNAME=username
+      - SPRING_DATASOURCE_PASSWORD=password
+
+  api-gateway:
+    image: api-gateway:v1
+    build:
+      context: .
+    ports:
+      - "9098:9098"
+    depends_on:
+      - eureka
+    environment:
+      - eureka.client.serviceUrl.defaultZone=http://eureka:8081/eureka
 
 volumes:
-  db-data: {}
+  db-data: { }
   minio_storage: { }
   db:
     driver: local
 
-
 networks:
   elastic:
-
