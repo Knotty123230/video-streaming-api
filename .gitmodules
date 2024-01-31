@@ -1,0 +1,18 @@
+[submodule "file-metadata-storage"]
+	path = file-metadata-storage
+	url = https://github.com/Knotty123230/file-metadata-storage.git
+[submodule "video-streaming"]
+	path = video-streaming
+	url = https://github.com/Knotty123230/video-streaming.git
+[submodule "authorization-server-api"]
+	path = authorization-server-api
+	url = https://github.com/Knotty123230/authorization-server-api.git
+[submodule "elastic-search"]
+	path = elastic-search
+	url = https://github.com/Knotty123230/elastic-search.git
+[submodule "api-gateway"]
+	path = api-gateway
+	url = https://github.com/Knotty123230/api-gateway.git
+[submodule "eureka-server"]
+	path = eureka-server
+	url = https://github.com/Knotty123230/eureka-server.git

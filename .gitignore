@@ -35,3 +35,11 @@ out/
 
 ### VS Code ###
 .vscode/
+/api-gateway/
+/authorization-server-api/
+/elastic-search-video/
+/eureka-server/
+/FileMetadataStorage/
+/VideoStreamingMicroservice/
+/postgres-data/
+/logstash_data/
