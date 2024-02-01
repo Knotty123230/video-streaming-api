@@ -23,7 +23,6 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
 
   elasticsearch:
-    container_name: elasticsearch
     image: docker.elastic.co/elasticsearch/elasticsearch:8.7.1
     environment:
       - 'CLI_JAVA_OPTS=-Xms2g -Xmx2g'
@@ -33,6 +32,8 @@ services:
       - 'xpack.security.enrollment.enabled=false'
     ports:
       - "9200:9200"
+      - "9300:9300"
+
     ulimits:
       memlock:
         soft: -1
@@ -64,11 +65,6 @@ services:
       POSTGRES_USER: username
       POSTGRES_PASSWORD: password
       POSTGRES_DB: authorization
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready", "-d", "clients_database" ]
-      interval: 10s
-      timeout: 3s
-      retries: 3
     ports:
       - "15432:5432"
     volumes:
@@ -158,12 +154,13 @@ services:
     depends_on:
       - elasticsearch
       - eureka
+      - kafka
     environment:
+      - spring.elasticsearch.uris=http://elasticsearch:9200
       - eureka.client.serviceUrl.defaultZone=http://eureka:8081/eureka
       - spring.kafka.bootstrap-servers=kafka:29092
-      - spring.elasticsearch.uris=localhost:9200
-      - spring.elasticsearch.username=elastic
-      - spring.elasticsearch.password=changeme
+
+
 
   file-metadata-storage:
     image: file-metadata:v1
@@ -171,6 +168,7 @@ services:
       - "0:0"
     depends_on:
       - kafka
+      - service-db
       - eureka
     environment:
       - eureka.client.serviceUrl.defaultZone=http://eureka:8081/eureka
@@ -211,5 +209,5 @@ volumes:
   db:
     driver: local
 
-networks:
-  elastic:
+#networks:
+#  elastic:
